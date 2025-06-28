@@ -21,7 +21,7 @@ DEFAULT_DOTFILES_REPO="https://github.com/artem968/Tokyo-Night-Hyprland.git"
 # Add all your essential Hyprland, Wayland, terminal, editor, etc., packages here.
 # rsync is installed separately before backup.
 PACMAN_PACKAGES="
-  hyprland git rsync hyprpicker hyprshot hyprpolkitagent hyprpaper nwg-displays waybar fuzzel ciliphist"
+  hyprland git rsync hyprpicker hyprshot hyprpolkitagent hyprpaper nwg-displays waybar fuzzel cliphist"
 
 # List of packages to install via an AUR helper (space-separated)
 # Add any AUR packages like icon themes, specific utilities, etc.
