@@ -4,3 +4,4 @@
 *.lua filter=lfs diff=lfs merge=lfs -text
 *.csproj filter=lfs diff=lfs merge=lfs -text
 *.csdevkit filter=lfs diff=lfs merge=lfs -text
+*-linux-x64 filter=lfs diff=lfs merge=lfs -text
