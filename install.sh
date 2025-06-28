@@ -4,8 +4,8 @@
 # It uses the 'gum' TUI for interactive prompts.
 #
 # Before running:
-# 1. Ensure 'gum' is installed (sudo pacman -S gum).
-# 2. This script will ask for your dotfiles Git repository URL.
+# 1. This script will check for 'gum' and offer to install it if missing.
+# 2. This script will ask if you want to use a custom dotfiles Git repository or the default.
 # 3. Ensure your new config files are in a 'config' subdirectory within your Git repository.
 #    Example: If your repository is 'my-dotfiles-repo' and your Hyprland config is inside
 #    'my-dotfiles-repo/config/hypr', it will be copied to ~/.config/hypr.
@@ -14,33 +14,76 @@
 # Default temporary directory for cloning the dotfiles repository
 TEMP_DOTFILES_DIR="/tmp/hyprland_dotfiles_$(date +%s)"
 
+# Default dotfiles repository URL
+DEFAULT_DOTFILES_REPO="https://github.com/artem968/Tokyo-Night-Hyprland.git"
+
 # List of packages to install via Pacman (space-separated)
 # Add all your essential Hyprland, Wayland, terminal, editor, etc., packages here.
 PACMAN_PACKAGES="
-  hyprland kvantum hyprshot hyprlock hyprpaper hyprpolkitagent waybar fuzzel git firefox neovim htop nwg-displays qt6ct qt5ct pavucontrol fastfetch cava"
+  hyprland wayland wayland-protocols xdg-desktop-portal xdg-desktop-portal-hyprland
+  kitty neovim git pulseaudio pipewire pipewire-pulse
+  brightnessctl playerctl polkit-kde-agent networkmanager
+  ttf-font-awesome ttf-jetbrains-mono noto-fonts noto-fonts-emoji
+  mako grim slurp wl-clipboard wofi dunst
+  swaybg swaylock-effects grimblast-git pamixer
+  zsh starship"
 
 # List of packages to install via an AUR helper (space-separated)
 # Add any AUR packages like icon themes, specific utilities, etc.
 AUR_PACKAGES="
-  unimatrix tty-clock visual-studio-code-bin ttf-font-awesome ttf-firacode-nerd"
+  hyprpicker-git sddm-git nwg-look-git wlr-randr-git
+  xdg-desktop-portal-hyprland-git" # Often AUR for latest git version
+
 # --- Script Start ---
 
-echo "Welcome to the Hyprland Dotfiles Setup Script!" | gum style --foreground "#8BE9FD" --bold
+echo "Welcome to the Hyprland Dotfiles Setup Script!"
 
-# Check for gum installation
+# --- Initial Check for gum installation ---
 if ! command -v gum &>/dev/null; then
-  echo "gum is not installed. This script requires 'gum' for its interactive interface." | gum style --foreground "#FF5555" --bold
-  echo "Please install it using: sudo pacman -S gum" | gum style --foreground "#50FA7B" --bold
-  exit 1
+  echo ""
+  echo "---------------------------------------------------------"
+  echo "  'gum' is not installed."
+  echo "  This script heavily relies on 'gum' for interactive prompts."
+  echo "  It makes the script much more user-friendly."
+  echo "---------------------------------------------------------"
+  echo ""
+  read -p "Do you want to install 'gum' now? (y/N) " install_gum_choice
+  case "$install_gum_choice" in
+  y | Y)
+    echo "Attempting to install 'gum'..."
+    sudo pacman -S gum --noconfirm
+    if [ $? -eq 0 ]; then
+      echo "'gum' installed successfully! Restarting script with gum."
+      # Re-execute the script, allowing it to proceed with gum
+      exec bash "$0" "$@"
+    else
+      echo "Failed to install 'gum'. Please install it manually: sudo pacman -S gum"
+      echo "Then re-run this script. Exiting."
+      exit 1
+    fi
+    ;;
+  *)
+    echo "Installation of 'gum' skipped. This script requires 'gum'."
+    echo "Please install it manually: sudo pacman -S gum"
+    echo "Then re-run this script. Exiting."
+    exit 1
+    ;;
+  esac
 fi
 
+# Now that gum is ensured to be installed, we can use it for styling
 gum style \
   --foreground "#F8F8F2" --border-foreground "#F8F8F2" --border normal \
   --align center --width 50 --margin "1 2" --padding "1 2" \
   "$(gum style --foreground "#BD93F9" --bold "Hyprland Dotfiles Setup")"
 
 # --- Step 0: Get Dotfiles Repository URL ---
-DOTFILES_REPO_URL=$(gum input --placeholder "Enter your dotfiles Git repository URL (e.g., https://github.com/youruser/your-dotfiles.git)")
+if gum confirm "Do you want to specify a custom dotfiles GitHub repository?"; then
+  DOTFILES_REPO_URL=$(gum input --placeholder "Enter your custom dotfiles Git repository URL (e.g., https://github.com/youruser/your-dotfiles.git)")
+else
+  DOTFILES_REPO_URL="$DEFAULT_DOTFILES_REPO"
+  echo "Using default dotfiles repository: $(gum style --foreground "#6272A4" "$DEFAULT_DOTFILES_REPO")" | gum style --foreground "#8BE9FD"
+fi
 
 if [ -z "$DOTFILES_REPO_URL" ]; then
   echo "Dotfiles repository URL cannot be empty. Exiting." | gum style --foreground "#FF5555" --bold
@@ -49,7 +92,7 @@ fi
 
 # --- Step 1: Check and Install AUR Helper ---
 AUR_HELPER=""
-if command -v yay /dev/null &>/g; then
+if command -v yay &>/dev/null; then
   AUR_HELPER="yay"
 elif command -v paru &>/dev/null; then
   AUR_HELPER="paru"
@@ -61,6 +104,11 @@ if [ -z "$AUR_HELPER" ]; then
     SELECTED_HELPER=$(gum choose "yay" "paru")
     echo "Installing $SELECTED_HELPER..." | gum style --foreground "#8BE9FD"
     gum spin --spinner dot --title "Installing build dependencies..." -- sudo pacman -S --needed git base-devel --noconfirm
+
+    # Clean up existing temporary build directory before attempting to clone
+    if [ -d "/tmp/$SELECTED_HELPER" ]; then
+      gum spin --spinner dot --title "Cleaning up old /tmp/$SELECTED_HELPER directory..." -- rm -rf "/tmp/$SELECTED_HELPER"
+    fi
 
     if [ "$SELECTED_HELPER" == "yay" ]; then
       gum spin --spinner dot --title "Cloning and building yay..." -- \
