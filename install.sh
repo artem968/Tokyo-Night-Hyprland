@@ -19,20 +19,14 @@ DEFAULT_DOTFILES_REPO="https://github.com/artem968/Tokyo-Night-Hyprland.git"
 
 # List of packages to install via Pacman (space-separated)
 # Add all your essential Hyprland, Wayland, terminal, editor, etc., packages here.
+# rsync is installed separately before backup.
 PACMAN_PACKAGES="
-  hyprland wayland wayland-protocols xdg-desktop-portal xdg-desktop-portal-hyprland
-  kitty neovim git pulseaudio pipewire pipewire-pulse
-  brightnessctl playerctl polkit-kde-agent networkmanager
-  ttf-font-awesome ttf-jetbrains-mono noto-fonts noto-fonts-emoji
-  mako grim slurp wl-clipboard wofi dunst
-  swaybg swaylock-effects grimblast-git pamixer
-  zsh starship"
+  hyprland git rsync hyprpicker hyprshot hyprpolkitagent hyprpaper nwg-displays waybar fuzzel ciliphist"
 
 # List of packages to install via an AUR helper (space-separated)
 # Add any AUR packages like icon themes, specific utilities, etc.
 AUR_PACKAGES="
-  hyprpicker-git sddm-git nwg-look-git wlr-randr-git
-  xdg-desktop-portal-hyprland-git" # Often AUR for latest git version
+  tty-clock unimatrix ttf-firacode-nerd ttf-font-awesome"
 
 # --- Script Start ---
 
@@ -133,7 +127,17 @@ else
   echo "Detected AUR helper: $(gum style --foreground "#50FA7B" --bold "$AUR_HELPER")"
 fi
 
-# --- Step 2: Clone Dotfiles Repository ---
+# --- Step 2: Install rsync (required for backup/copying) ---
+echo "Ensuring 'rsync' is installed (required for file operations)..." | gum style --foreground "#8BE9FD" --bold
+gum spin --spinner dot --title "Installing rsync..." -- sudo pacman -S --needed rsync --noconfirm
+if [ $? -eq 0 ]; then
+  echo "'rsync' installed successfully!" | gum style --foreground "#50FA7B" --bold
+else
+  echo "Failed to install 'rsync'. This is crucial for backing up and copying files. Exiting." | gum style --foreground "#FF5555" --bold
+  exit 1
+fi
+
+# --- Step 3: Clone Dotfiles Repository ---
 echo "Cloning your dotfiles repository: $(gum style --foreground "#6272A4" "$DOTFILES_REPO_URL")" | gum style --foreground "#8BE9FD" --bold
 gum spin --spinner dot --title "Cloning dotfiles to $TEMP_DOTFILES_DIR..." -- git clone "$DOTFILES_REPO_URL" "$TEMP_DOTFILES_DIR"
 if [ $? -eq 0 ]; then
@@ -151,7 +155,7 @@ else
   exit 1
 fi
 
-# --- Step 3: Backup existing ~/.config folder ---
+# --- Step 4: Backup existing ~/.config folder ---
 if gum confirm "Do you want to create a backup of your existing ~/.config folder?"; then
   BACKUP_DIR="$HOME/.config_backup_$(date +%Y%m%d_%H%M%S)"
   echo "Creating backup in $BACKUP_DIR..." | gum style --foreground "#8BE9FD"
@@ -165,8 +169,8 @@ else
   echo "Skipping backup of ~/.config." | gum style --foreground "#BD93F9"
 fi
 
-# --- Step 4: Install Pacman packages ---
-echo "Installing Pacman packages..." | gum style --foreground "#8BE9FD" --bold
+# --- Step 5: Install remaining Pacman packages ---
+echo "Installing remaining Pacman packages..." | gum style --foreground "#8BE9FD" --bold
 gum spin --spinner dot --title "Running sudo pacman -S --needed..." -- sudo pacman -S --needed $PACMAN_PACKAGES --noconfirm
 if [ $? -eq 0 ]; then
   echo "Pacman packages installed successfully!" | gum style --foreground "#50FA7B" --bold
@@ -179,7 +183,7 @@ else
   fi
 fi
 
-# --- Step 5: Install AUR packages ---
+# --- Step 6: Install AUR packages ---
 if [ -n "$AUR_HELPER" ]; then
   echo "Installing AUR packages using $AUR_HELPER..." | gum style --foreground "#8BE9FD" --bold
   gum spin --spinner dot --title "Running $AUR_HELPER -S --needed..." -- $AUR_HELPER -S --needed $AUR_PACKAGES --noconfirm
@@ -197,7 +201,7 @@ else
   echo "No AUR helper found or installed. Skipping AUR package installation." | gum style --foreground "#FFB86C"
 fi
 
-# --- Step 6: Copy new config files ---
+# --- Step 7: Copy new config files ---
 echo "Copying new configuration files from cloned repository to ~/.config..." | gum style --foreground "#8BE9FD" --bold
 gum spin --spinner dot --title "Copying $DOTFILES_CONFIG_SOURCE_DIR to ~/.config..." -- rsync -av --delete "$DOTFILES_CONFIG_SOURCE_DIR/" "$HOME/.config/"
 if [ $? -eq 0 ]; then
@@ -209,7 +213,7 @@ else
   exit 1
 fi
 
-# --- Step 7: Clean up temporary dotfiles ---
+# --- Step 8: Clean up temporary dotfiles ---
 echo "Cleaning up temporary dotfiles directory: $(gum style --foreground "#6272A4" "$TEMP_DOTFILES_DIR")" | gum style --foreground "#8BE9FD"
 rm -rf "$TEMP_DOTFILES_DIR"
 if [ $? -eq 0 ]; then
