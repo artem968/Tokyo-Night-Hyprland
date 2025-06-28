@@ -5,3 +5,4 @@
 *.csproj filter=lfs diff=lfs merge=lfs -text
 *.csdevkit filter=lfs diff=lfs merge=lfs -text
 *-linux-x64 filter=lfs diff=lfs merge=lfs -text
+config/Code/CachedExtensionVSIXs/ms-dotnettools.csdevkit-1.20.35-linux-x64 filter=lfs diff=lfs merge=lfs -text
