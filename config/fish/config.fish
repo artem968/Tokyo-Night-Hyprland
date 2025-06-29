@@ -8,4 +8,4 @@ function fish_greeting
     # Do nothing
 end
 
-theme ~/.config/fish/themes/tokyonight_night.theme
+source ~/.config/fish/themes/tokyonight_night.theme
