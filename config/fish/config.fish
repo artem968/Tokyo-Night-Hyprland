@@ -10,4 +10,4 @@ end
 
 source ~/.config/fish/themes/tokyonight_night.theme
 
-starship init fish | source
+#starship init fish | source
