@@ -9,3 +9,5 @@ function fish_greeting
 end
 
 source ~/.config/fish/themes/tokyonight_night.theme
+
+starship init fish | source
