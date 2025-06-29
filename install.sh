@@ -6,27 +6,26 @@
 # Before running:
 # 1. This script will check for 'gum' and offer to install it if missing.
 # 2. This script will ask if you want to use a custom dotfiles Git repository or the default.
-# 3. Ensure your new config files are in a 'config' subdirectory within your Git repository.
+# 3. This script will fetch PACMAN_PACKAGES and AUR_PACKAGES from 'packages.conf'
+#    within your cloned dotfiles repository.
+# 4. Ensure your new config files are in a 'config' subdirectory within your Git repository.
 #    Example: If your repository is 'my-dotfiles-repo' and your Hyprland config is inside
 #    'my-dotfiles-repo/config/hypr', it will be copied to ~/.config/hypr.
+# 5. Ensure your 'packages.conf' file is in the root of your dotfiles repository
+#    and defines 'PACMAN_PACKAGES' and 'AUR_PACKAGES' variables like so:
+#    PACMAN_PACKAGES="package1 package2"
+#    AUR_PACKAGES="aur_package1 aur_package2"
 
-# --- Configuration (can be overridden by user input) ---
+# --- Configuration ---
 # Default temporary directory for cloning the dotfiles repository
 TEMP_DOTFILES_DIR="/tmp/hyprland_dotfiles_$(date +%s)"
 
 # Default dotfiles repository URL
 DEFAULT_DOTFILES_REPO="https://github.com/artem968/Tokyo-Night-Hyprland.git"
 
-# List of packages to install via Pacman (space-separated)
-# Add all your essential Hyprland, Wayland, terminal, editor, etc., packages here.
-# rsync is installed separately before backup.
-PACMAN_PACKAGES="
-  hyprland git rsync hyprpicker hyprshot hyprpolkitagent hyprpaper nwg-displays waybar fuzzel cliphist kitty feh neovim"
-
-# List of packages to install via an AUR helper (space-separated)
-# Add any AUR packages like icon themes, specific utilities, etc.
-AUR_PACKAGES="
-  tty-clock unimatrix ttf-firacode-nerd ttf-font-awesome"
+# These will be populated from packages.conf after cloning
+PACMAN_PACKAGES=""
+AUR_PACKAGES=""
 
 # --- Script Start ---
 
@@ -84,7 +83,84 @@ if [ -z "$DOTFILES_REPO_URL" ]; then
   exit 1
 fi
 
-# --- Step 1: Check and Install AUR Helper ---
+# --- Step 1: Clone Dotfiles Repository ---
+echo "Cloning your dotfiles repository: $(gum style --foreground "#6272A4" "$DOTFILES_REPO_URL")" | gum style --foreground "#8BE9FD" --bold
+gum spin --spinner dot --title "Cloning dotfiles to $TEMP_DOTFILES_DIR..." -- git clone "$DOTFILES_REPO_URL" "$TEMP_DOTFILES_DIR"
+if [ $? -eq 0 ]; then
+  echo "Dotfiles cloned successfully!" | gum style --foreground "#50FA7B" --bold
+  DOTFILES_CONFIG_SOURCE_DIR="$TEMP_DOTFILES_DIR/config"
+  if [ ! -d "$DOTFILES_CONFIG_SOURCE_DIR" ]; then
+    echo "Error: 'config' directory not found inside the cloned repository ($DOTFILES_CONFIG_SOURCE_DIR)." | gum style --foreground "#FF5555" --bold
+    echo "Please ensure your dotfiles repo has a 'config' directory containing your configuration files." | gum style --foreground "#FF5555" --bold
+    echo "Cleaning up temporary files and exiting." | gum style --foreground "#FF5555"
+    rm -rf "$TEMP_DOTFILES_DIR"
+    exit 1
+  fi
+else
+  echo "Failed to clone dotfiles repository. Please check the URL and your network connection." | gum style --foreground "#FF5555" --bold
+  exit 1
+fi
+
+# --- Step 2: Read packages from packages.conf ---
+PACKAGES_CONF_FILE="$TEMP_DOTFILES_DIR/packages.conf"
+echo "Reading package lists from $(gum style --foreground "#6272A4" "$PACKAGES_CONF_FILE")..." | gum style --foreground "#8BE9FD" --bold
+
+if [ ! -f "$PACKAGES_CONF_FILE" ]; then
+  echo "Error: 'packages.conf' not found in the root of your cloned repository ($PACKAGES_CONF_FILE)." | gum style --foreground "#FF5555" --bold
+  echo "Please ensure your dotfiles repo contains a 'packages.conf' file defining PACMAN_PACKAGES and AUR_PACKAGES." | gum style --foreground "#FF5555" --bold
+  echo "Cleaning up temporary files and exiting." | gum style --foreground "#FF5555"
+  rm -rf "$TEMP_DOTFILES_DIR"
+  exit 1
+fi
+
+# Source the packages.conf file to load the variables
+source "$PACKAGES_CONF_FILE"
+
+# Verify that the variables were loaded
+if [ -z "$PACMAN_PACKAGES" ]; then
+  echo "Warning: PACMAN_PACKAGES variable is empty or not defined in packages.conf. No Pacman packages will be installed." | gum style --foreground "#FFB86C"
+fi
+if [ -z "$AUR_PACKAGES" ]; then
+  echo "Warning: AUR_PACKAGES variable is empty or not defined in packages.conf. No AUR packages will be installed." | gum style --foreground "#FFB86C"
+fi
+
+echo "Pacman packages to install: $(gum style --foreground "#50FA7B" "$PACMAN_PACKAGES")"
+echo "AUR packages to install: $(gum style --foreground "#50FA7B" "$AUR_PACKAGES")"
+
+# --- Step 3: Install rsync (required for backup/copying) ---
+# Check if rsync is already in PACMAN_PACKAGES to avoid redundant messaging
+if [[ ! " $PACMAN_PACKAGES " =~ " rsync " ]]; then
+  echo "Ensuring 'rsync' is installed (required for file operations)..." | gum style --foreground "#8BE9FD" --bold
+  gum spin --spinner dot --title "Installing rsync..." -- sudo pacman -S --needed rsync --noconfirm
+  if [ $? -eq 0 ]; then
+    echo "'rsync' installed successfully!" | gum style --foreground "#50FA7B" --bold
+  else
+    echo "Failed to install 'rsync'. This is crucial for backing up and copying files. Exiting." | gum style --foreground "#FF5555" --bold
+    # Clean up temporary dotfiles directory before exiting
+    rm -rf "$TEMP_DOTFILES_DIR"
+    exit 1
+  fi
+else
+  echo "'rsync' is included in your PACMAN_PACKAGES and will be installed shortly." | gum style --foreground "#8BE9FD"
+fi
+
+# --- Step 4: Backup existing ~/.config folder ---
+if gum confirm "Do you want to create a backup of your existing ~/.config folder?"; then
+  BACKUP_DIR="$HOME/.config_backup_$(date +%Y%m%d_%H%M%S)"
+  echo "Creating backup in $BACKUP_DIR..." | gum style --foreground "#8BE9FD"
+  gum spin --spinner dot --title "Backing up ~/.config..." -- rsync -av --exclude '**/cache' --exclude '**/npm' --exclude '**/yarn' --exclude '**/node_modules' "$HOME/.config/" "$BACKUP_DIR/"
+  if [ $? -eq 0 ]; then
+    echo "Backup created successfully!" | gum style --foreground "#50FA7B" --bold
+  else
+    echo "Backup failed. Continuing without backup." | gum style --foreground "#FFB86C"
+  fi
+else
+  echo "Skipping backup of ~/.config." | gum style --foreground "#BD93F9"
+fi
+
+# --- Step 5: Check and Install AUR Helper ---
+# This step is placed here as AUR helpers are typically built with `git` and `base-devel`,
+# which are often core packages, and ensures the helper is ready before AUR_PACKAGES are installed.
 AUR_HELPER=""
 if command -v yay &>/dev/null; then
   AUR_HELPER="yay"
@@ -97,7 +173,7 @@ if [ -z "$AUR_HELPER" ]; then
   if gum confirm "Do you want to install one?"; then
     SELECTED_HELPER=$(gum choose "yay" "paru")
     echo "Installing $SELECTED_HELPER..." | gum style --foreground "#8BE9FD"
-    gum spin --spinner dot --title "Installing build dependencies..." -- sudo pacman -S --needed git base-devel --noconfirm
+    gum spin --spinner dot --title "Installing build dependencies (git, base-devel)..." -- sudo pacman -S --needed git base-devel --noconfirm
 
     # Clean up existing temporary build directory before attempting to clone
     if [ -d "/tmp/$SELECTED_HELPER" ]; then
@@ -117,75 +193,41 @@ if [ -z "$AUR_HELPER" ]; then
       echo "$AUR_HELPER installed successfully!" | gum style --foreground "#50FA7B" --bold
     else
       echo "Failed to install $SELECTED_HELPER. Please install it manually and re-run the script." | gum style --foreground "#FF5555" --bold
+      # Clean up temporary dotfiles directory before exiting
+      rm -rf "$TEMP_DOTFILES_DIR"
       exit 1
     fi
   else
     echo "An AUR helper is required to install some packages. Exiting." | gum style --foreground "#FF5555" --bold
+    # Clean up temporary dotfiles directory before exiting
+    rm -rf "$TEMP_DOTFILES_DIR"
     exit 1
   fi
 else
   echo "Detected AUR helper: $(gum style --foreground "#50FA7B" --bold "$AUR_HELPER")"
 fi
 
-# --- Step 2: Install rsync (required for backup/copying) ---
-echo "Ensuring 'rsync' is installed (required for file operations)..." | gum style --foreground "#8BE9FD" --bold
-gum spin --spinner dot --title "Installing rsync..." -- sudo pacman -S --needed rsync --noconfirm
-if [ $? -eq 0 ]; then
-  echo "'rsync' installed successfully!" | gum style --foreground "#50FA7B" --bold
-else
-  echo "Failed to install 'rsync'. This is crucial for backing up and copying files. Exiting." | gum style --foreground "#FF5555" --bold
-  exit 1
-fi
-
-# --- Step 3: Clone Dotfiles Repository ---
-echo "Cloning your dotfiles repository: $(gum style --foreground "#6272A4" "$DOTFILES_REPO_URL")" | gum style --foreground "#8BE9FD" --bold
-gum spin --spinner dot --title "Cloning dotfiles to $TEMP_DOTFILES_DIR..." -- git clone "$DOTFILES_REPO_URL" "$TEMP_DOTFILES_DIR"
-if [ $? -eq 0 ]; then
-  echo "Dotfiles cloned successfully!" | gum style --foreground "#50FA7B" --bold
-  DOTFILES_CONFIG_SOURCE_DIR="$TEMP_DOTFILES_DIR/config"
-  if [ ! -d "$DOTFILES_CONFIG_SOURCE_DIR" ]; then
-    echo "Error: 'config' directory not found inside the cloned repository ($DOTFILES_CONFIG_SOURCE_DIR)." | gum style --foreground "#FF5555" --bold
-    echo "Please ensure your dotfiles repo has a 'config' directory containing your configuration files." | gum style --foreground "#FF5555" --bold
-    echo "Cleaning up temporary files and exiting." | gum style --foreground "#FF5555"
-    rm -rf "$TEMP_DOTFILES_DIR"
-    exit 1
-  fi
-else
-  echo "Failed to clone dotfiles repository. Please check the URL and your network connection." | gum style --foreground "#FF5555" --bold
-  exit 1
-fi
-
-# --- Step 4: Backup existing ~/.config folder ---
-if gum confirm "Do you want to create a backup of your existing ~/.config folder?"; then
-  BACKUP_DIR="$HOME/.config_backup_$(date +%Y%m%d_%H%M%S)"
-  echo "Creating backup in $BACKUP_DIR..." | gum style --foreground "#8BE9FD"
-  gum spin --spinner dot --title "Backing up ~/.config..." -- rsync -av --exclude '**/cache' --exclude '**/npm' --exclude '**/yarn' --exclude '**/node_modules' "$HOME/.config/" "$BACKUP_DIR/"
+# --- Step 6: Install remaining Pacman packages ---
+if [ -n "$PACMAN_PACKAGES" ]; then
+  echo "Installing Pacman packages from packages.conf..." | gum style --foreground "#8BE9FD" --bold
+  gum spin --spinner dot --title "Running sudo pacman -S --needed..." -- sudo pacman -S --needed $PACMAN_PACKAGES --noconfirm
   if [ $? -eq 0 ]; then
-    echo "Backup created successfully!" | gum style --foreground "#50FA7B" --bold
+    echo "Pacman packages installed successfully!" | gum style --foreground "#50FA7B" --bold
   else
-    echo "Backup failed. Continuing without backup." | gum style --foreground "#FFB86C"
+    echo "Failed to install all Pacman packages. Please check the output above." | gum style --foreground "#FF5555" --bold
+    if ! gum confirm "Do you want to continue despite Pacman errors?"; then
+      # Clean up temporary dotfiles directory before exiting
+      rm -rf "$TEMP_DOTFILES_DIR"
+      exit 1
+    fi
   fi
 else
-  echo "Skipping backup of ~/.config." | gum style --foreground "#BD93F9"
+  echo "No Pacman packages specified in packages.conf. Skipping Pacman installation." | gum style --foreground "#FFB86C"
 fi
 
-# --- Step 5: Install remaining Pacman packages ---
-echo "Installing remaining Pacman packages..." | gum style --foreground "#8BE9FD" --bold
-gum spin --spinner dot --title "Running sudo pacman -S --needed..." -- sudo pacman -S --needed $PACMAN_PACKAGES --noconfirm
-if [ $? -eq 0 ]; then
-  echo "Pacman packages installed successfully!" | gum style --foreground "#50FA7B" --bold
-else
-  echo "Failed to install all Pacman packages. Please check the output above." | gum style --foreground "#FF5555" --bold
-  if ! gum confirm "Do you want to continue despite Pacman errors?"; then
-    # Clean up temporary dotfiles directory before exiting
-    rm -rf "$TEMP_DOTFILES_DIR"
-    exit 1
-  fi
-fi
-
-# --- Step 6: Install AUR packages ---
-if [ -n "$AUR_HELPER" ]; then
-  echo "Installing AUR packages using $AUR_HELPER..." | gum style --foreground "#8BE9FD" --bold
+# --- Step 7: Install AUR packages ---
+if [ -n "$AUR_HELPER" ] && [ -n "$AUR_PACKAGES" ]; then
+  echo "Installing AUR packages using $AUR_HELPER from packages.conf..." | gum style --foreground "#8BE9FD" --bold
   gum spin --spinner dot --title "Running $AUR_HELPER -S --needed..." -- $AUR_HELPER -S --needed $AUR_PACKAGES --noconfirm
   if [ $? -eq 0 ]; then
     echo "AUR packages installed successfully!" | gum style --foreground "#50FA7B" --bold
@@ -198,10 +240,10 @@ if [ -n "$AUR_HELPER" ]; then
     fi
   fi
 else
-  echo "No AUR helper found or installed. Skipping AUR package installation." | gum style --foreground "#FFB86C"
+  echo "No AUR helper found/installed or no AUR packages specified in packages.conf. Skipping AUR package installation." | gum style --foreground "#FFB86C"
 fi
 
-# --- Step 7: Copy new config files ---
+# --- Step 8: Copy new config files ---
 echo "Copying new configuration files from cloned repository to ~/.config..." | gum style --foreground "#8BE9FD" --bold
 gum spin --spinner dot --title "Copying $DOTFILES_CONFIG_SOURCE_DIR to ~/.config..." -- rsync -av --delete "$DOTFILES_CONFIG_SOURCE_DIR/" "$HOME/.config/"
 if [ $? -eq 0 ]; then
@@ -213,7 +255,7 @@ else
   exit 1
 fi
 
-# --- Step 8: Clean up temporary dotfiles ---
+# --- Step 9: Clean up temporary dotfiles ---
 echo "Cleaning up temporary dotfiles directory: $(gum style --foreground "#6272A4" "$TEMP_DOTFILES_DIR")" | gum style --foreground "#8BE9FD"
 rm -rf "$TEMP_DOTFILES_DIR"
 if [ $? -eq 0 ]; then
