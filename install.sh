@@ -1,5 +1,7 @@
 #!/bin/bash
 
+clear
+
 # This script automates the installation of Hyprland dotfiles.
 # It uses the 'gum' TUI for interactive prompts.
 #
